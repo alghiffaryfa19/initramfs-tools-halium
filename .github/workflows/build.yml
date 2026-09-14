@@ -46,11 +46,11 @@ jobs:
 
       - name: Add Droidian staging repository
         run: |
-          # Add foreign arch for cross-build
-          sudo dpkg --add-architecture ${{ matrix.arch }}
-
+          # Add Droidian staging repo GPG key
+          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 5E775B2A27AB0C94
+          
           # Add Droidian staging repo (trixie)
-          echo "deb [trusted=yes] https://staging.repo.droidian.org/ trixie main" \
+          echo "deb https://staging.repo.droidian.org/ trixie main" \
             | sudo tee /etc/apt/sources.list.d/droidian-staging.list
 
       - name: Install host prerequisites
