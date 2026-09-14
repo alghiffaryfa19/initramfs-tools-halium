@@ -44,82 +44,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Add Droidian staging repository
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ca-certificates curl gnupg
-          
-          # Add Droidian staging repo (trixie)
-          echo "deb [trusted=yes] https://staging.repo.droidian.org/ trixie main" \
-            | sudo tee /etc/apt/sources.list.d/droidian-staging.list
-
-      - name: Install host prerequisites
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            debootstrap \
-            qemu-user-static \
-            binfmt-support \
-            dpkg-dev \
-            lz4 \
-            initramfs-tools \
-            busybox-static \
-            coreutils \
-            e2fsprogs \
-            lvm2 \
-            dropbear \
-            cryptsetup-initramfs \
-            plymouth \
-            plymouth-themes \
-            pigz \
-            tar \
-            xkb-data \
-            libc6-dev \
-            libssl-dev \
-            dmsetup \
-            gcc
-          
-          # Droidian-specific packages from the staging repo
-          sudo apt-get install -y \
-            plymouth-theme-droidian \
-            lxc-android \
-            unl0kr \
-            droidian-encryption-service \
-            parse-android-dynparts \
-          || echo "::warning::Some Droidian packages could not be installed"
-
       - name: Register QEMU binfmt handlers
         run: |
-          docker run --rm --privileged \
-            multiarch/qemu-user-static --reset -p yes
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
-      - name: Build initrd (normal)
+      - name: Build inside Debian Trixie container
         run: |
-          sudo ./build-initrd.sh \
-            -a ${{ matrix.arch }} \
-            -c gzip \
-            -n initrd.img-halium-generic
-
-      - name: Build initrd (recovery)
-        run: |
-          sudo ./build-initrd.sh \
-            -a ${{ matrix.arch }} \
-            -c gzip \
-            -n recovery-initramfs.img-halium-generic \
-            -r
-
-      - name: Build lz4 variants
-        run: |
-          sudo ./build-initrd.sh \
-            -a ${{ matrix.arch }} \
-            -c lz4 \
-            -n initrd.img-halium-generic-lz4
-
-          sudo ./build-initrd.sh \
-            -a ${{ matrix.arch }} \
-            -c lz4 \
-            -n recovery-initramfs.img-halium-generic-lz4 \
-            -r
+          docker run --rm --privileged -v ${{ github.workspace }}:/work -w /work debian:trixie bash -c '
+            set -e
+            apt-get update
+            apt-get install -y ca-certificates curl gnupg
+            echo "deb [trusted=yes] https://staging.repo.droidian.org/ trixie main" > /etc/apt/sources.list.d/droidian-staging.list
+            
+            apt-get update
+            apt-get install -y debootstrap qemu-user-static binfmt-support dpkg-dev lz4 \
+              initramfs-tools busybox-static coreutils e2fsprogs lvm2 dropbear \
+              cryptsetup-initramfs plymouth plymouth-themes pigz tar xkb-data \
+              libc6-dev libssl-dev dmsetup gcc
+              
+            apt-get install -y plymouth-theme-droidian lxc-android unl0kr \
+              droidian-encryption-service parse-android-dynparts
+              
+            # Add gcc to INCHROOTPKGS so dpkg-architecture works inside the chroot
+            export INCHROOTPKGS="initramfs-tools dctrl-tools e2fsprogs libc6-dev zlib1g-dev libssl-dev busybox-static lvm2 cryptsetup xkb-data dropbear pigz liblz4-tool gcc"
+            
+            ./build-initrd.sh -a ${{ matrix.arch }} -c gzip -n initrd.img-halium-generic
+            ./build-initrd.sh -a ${{ matrix.arch }} -c gzip -n recovery-initramfs.img-halium-generic -r
+            ./build-initrd.sh -a ${{ matrix.arch }} -c lz4 -n initrd.img-halium-generic-lz4
+            ./build-initrd.sh -a ${{ matrix.arch }} -c lz4 -n recovery-initramfs.img-halium-generic-lz4 -r
+          '
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
