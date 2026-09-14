@@ -152,7 +152,11 @@ mkdir -p ${DESTDIR}/etc ${DESTDIR}/usr/lib ${DESTDIR}/lib ${DESTDIR}/mnt ${DESTD
 
 export __MODULES_TO_ADD="$(mktemp "${TMPDIR:-/var/tmp}/modules_XXXXXX")"
 for hook in ${MINIENV_HOOKS}; do
-	bash -x /usr/share/initramfs-tools/hooks/${hook}
+	if [ -f "/usr/share/initramfs-tools/hooks/${hook}" ]; then
+		bash -x /usr/share/initramfs-tools/hooks/${hook}
+	else
+		echo "W: Hook ${hook} not found in /usr/share/initramfs-tools/hooks, skipping."
+	fi
 done
 
 # stretch does not have /usr merged, so simply move stuff to /lib
