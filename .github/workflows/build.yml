@@ -74,6 +74,9 @@ jobs:
             ./build-initrd.sh -a ${{ matrix.arch }} -c lz4 -n recovery-initramfs.img-halium-generic-lz4 -r
           '
 
+      - name: Fix artifact permissions
+        run: sudo chown -R $USER:$USER out/
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
