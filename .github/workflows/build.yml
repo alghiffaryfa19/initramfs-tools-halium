@@ -1,0 +1,148 @@
+name: Build initramfs
+
+on:
+  push:
+    branches: ["**"]
+    tags:
+      - "droidian/**/*"
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  # ------------------------------------------------------------------
+  # Lint – quick shell-syntax check (mirrors override_dh_auto_test)
+  # ------------------------------------------------------------------
+  lint:
+    name: Shell syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check shell syntax
+        run: |
+          set -e
+          for f in hooks/* scripts/panic/telnet scripts/halium; do
+            echo "Checking sh syntax of $f"
+            sh -n "$f"
+          done
+
+  # ------------------------------------------------------------------
+  # Build – cross-build initrd images for each architecture
+  # ------------------------------------------------------------------
+  build:
+    name: Build initrd (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [armhf, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Add Droidian staging repository
+        run: |
+          # Add foreign arch for cross-build
+          sudo dpkg --add-architecture ${{ matrix.arch }}
+
+          # Add Droidian staging repo (trixie)
+          echo "deb [trusted=yes] https://staging.repo.droidian.org/ trixie main" \
+            | sudo tee /etc/apt/sources.list.d/droidian-staging.list
+
+      - name: Install host prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            debootstrap \
+            qemu-user-static \
+            binfmt-support \
+            dpkg-dev \
+            lz4 \
+            initramfs-tools \
+            busybox-static \
+            coreutils \
+            e2fsprogs \
+            lvm2 \
+            dropbear \
+            cryptsetup-initramfs \
+            plymouth \
+            pigz \
+            tar \
+            xkb-data \
+            libc6-dev \
+            libssl-dev \
+            dmsetup
+          # Droidian-specific packages from the staging repo
+          sudo apt-get install -y \
+            plymouth-theme-droidian \
+            lxc-android \
+            unl0kr \
+            droidian-encryption-service \
+            parse-android-dynparts \
+          || echo "::warning::Some Droidian packages could not be installed"
+
+      - name: Register QEMU binfmt handlers
+        run: |
+          docker run --rm --privileged \
+            multiarch/qemu-user-static --reset -p yes
+
+      - name: Build initrd (normal)
+        run: |
+          sudo ./build-initrd.sh \
+            -a ${{ matrix.arch }} \
+            -c gzip \
+            -n initrd.img-halium-generic
+
+      - name: Build initrd (recovery)
+        run: |
+          sudo ./build-initrd.sh \
+            -a ${{ matrix.arch }} \
+            -c gzip \
+            -n recovery-initramfs.img-halium-generic \
+            -r
+
+      - name: Build lz4 variants
+        run: |
+          sudo ./build-initrd.sh \
+            -a ${{ matrix.arch }} \
+            -c lz4 \
+            -n initrd.img-halium-generic-lz4
+
+          sudo ./build-initrd.sh \
+            -a ${{ matrix.arch }} \
+            -c lz4 \
+            -n recovery-initramfs.img-halium-generic-lz4 \
+            -r
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: initrd-${{ matrix.arch }}
+          path: out/
+          retention-days: 30
+
+  # ------------------------------------------------------------------
+  # Release – upload assets when a Droidian release tag is pushed
+  # ------------------------------------------------------------------
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/**/*
