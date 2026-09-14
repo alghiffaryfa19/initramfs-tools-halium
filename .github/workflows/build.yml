@@ -34,7 +34,6 @@ jobs:
   build:
     name: Build initrd (${{ matrix.arch }})
     runs-on: ubuntu-latest
-    container: debian:trixie
     needs: lint
     strategy:
       fail-fast: false
@@ -47,17 +46,17 @@ jobs:
 
       - name: Add Droidian staging repository
         run: |
-          apt-get update
-          apt-get install -y ca-certificates curl gnupg
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl gnupg
           
           # Add Droidian staging repo (trixie)
           echo "deb [trusted=yes] https://staging.repo.droidian.org/ trixie main" \
-            > /etc/apt/sources.list.d/droidian-staging.list
+            | sudo tee /etc/apt/sources.list.d/droidian-staging.list
 
       - name: Install host prerequisites
         run: |
-          apt-get update
-          apt-get install -y \
+          sudo apt-get update
+          sudo apt-get install -y \
             debootstrap \
             qemu-user-static \
             binfmt-support \
@@ -78,11 +77,10 @@ jobs:
             libc6-dev \
             libssl-dev \
             dmsetup \
-            gcc \
-            sudo
+            gcc
           
           # Droidian-specific packages from the staging repo
-          apt-get install -y \
+          sudo apt-get install -y \
             plymouth-theme-droidian \
             lxc-android \
             unl0kr \
